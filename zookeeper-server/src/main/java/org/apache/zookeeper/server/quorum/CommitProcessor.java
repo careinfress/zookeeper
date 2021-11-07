@@ -78,15 +78,17 @@ public class CommitProcessor extends ZooKeeperCriticalThread implements RequestP
                 }
                 toProcess.clear();
                 synchronized (this) {
-                    if ((queuedRequests.size() == 0 || nextPending != null)
-                            && committedRequests.size() == 0) {
+                    // queuedRequests 没有元素 && committedRequests 也没有元素
+                    if ((queuedRequests.size() == 0 || nextPending != null) && committedRequests.size() == 0) {
+                        // 阻塞
                         wait();
                         continue;
                     }
+
+                    // queuedRequests 没有元素，但是 committedRequests 有元素
                     // First check and see if the commit came in for the pending
                     // request
-                    if ((queuedRequests.size() == 0 || nextPending != null)
-                            && committedRequests.size() > 0) {
+                    if ((queuedRequests.size() == 0 || nextPending != null) && committedRequests.size() > 0) {
                         Request r = committedRequests.remove();
                         /*
                          * We match with nextPending so that we can move to the
@@ -120,6 +122,7 @@ public class CommitProcessor extends ZooKeeperCriticalThread implements RequestP
 
                 synchronized (this) {
                     // Process the next requests in the queuedRequests
+                    // queuedRequests 有元素
                     while (nextPending == null && queuedRequests.size() > 0) {
                         Request request = queuedRequests.remove();
                         switch (request.type) {

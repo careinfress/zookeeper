@@ -587,12 +587,14 @@ public class ZooKeeper {
 
         ConnectStringParser connectStringParser = new ConnectStringParser(
                 connectString);
-        HostProvider hostProvider = new StaticHostProvider(
-                connectStringParser.getServerAddresses());
+        // 随机找一个 Zookeeper 的节点进行连接
+        HostProvider hostProvider = new StaticHostProvider(connectStringParser.getServerAddresses());
+        // 初始化一个连接服务器
         cnxn = new ClientCnxn(connectStringParser.getChrootPath(),
                 hostProvider, sessionTimeout, this, watchManager,
                 getClientCnxnSocket(), sessionId, sessionPasswd, canBeReadOnly);
         cnxn.seenRwServerBefore = true; // since user has provided sessionId
+        // 开启两个IO线程
         cnxn.start();
     }
 

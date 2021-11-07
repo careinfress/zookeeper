@@ -104,11 +104,17 @@ public abstract class ServerCnxnFactory {
     }
 
     public abstract void closeAll();
-    
+
+    /**
+     * 通过反射的方式进行实例化
+     * @return
+     * @throws IOException
+     */
     static public ServerCnxnFactory createFactory() throws IOException {
         String serverCnxnFactoryName =
             System.getProperty(ZOOKEEPER_SERVER_CNXN_FACTORY);
         if (serverCnxnFactoryName == null) {
+            // 默认是 NIOServerCnxnFactory
             serverCnxnFactoryName = NIOServerCnxnFactory.class.getName();
         }
         try {

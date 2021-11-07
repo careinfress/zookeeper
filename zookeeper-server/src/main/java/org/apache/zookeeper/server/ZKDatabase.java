@@ -214,6 +214,7 @@ public class ZKDatabase {
      * @throws IOException
      */
     public long loadDataBase() throws IOException {
+        // 恢复数据 获取最大的 zxid
         long zxid = snapLog.restore(dataTree, sessionsWithTimeouts, commitProposalPlaybackListener);
         initialized = true;
         return zxid;

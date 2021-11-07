@@ -212,6 +212,7 @@ public class LearnerHandler extends ZooKeeperThread {
                 QuorumPacket p;
                 p = queuedPackets.poll();
                 if (p == null) {
+                    // 将需要发送的包都放到 bufferedOutput 之后调用 flush 发送
                     bufferedOutput.flush();
                     p = queuedPackets.take();
                 }
@@ -585,8 +586,7 @@ public class LearnerHandler extends ZooKeeperThread {
                     break;
                 case Leader.PING:
                     // Process the touches
-                    ByteArrayInputStream bis = new ByteArrayInputStream(qp
-                            .getData());
+                    ByteArrayInputStream bis = new ByteArrayInputStream(qp.getData());
                     DataInputStream dis = new DataInputStream(bis);
                     while (dis.available() > 0) {
                         long sess = dis.readLong();

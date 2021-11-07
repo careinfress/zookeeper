@@ -190,6 +190,29 @@ public class Leader {
     
     ServerSocket ss;
 
+    /**
+     *
+     * 当你在搭建 zk 集群的时候，指定了 zoo.cfg 配置文件:
+     * server.1 = bigdata01:2181 :2888 :3888
+     * 1、2181 给客户端提供读写服务的服务程序监听的端口: 启动了一个NIO服务端
+     * 2、3888 选举算法工作过程中，两两服务器之间需要进行通信，每个服务器都启动了一个BIO服务端
+     * 3、2888 状态同步，选举结束之后，进入正常工作模式的时候。Follower 和 Leader 进行通信的端口心跳端口 BIO 服务端
+     *
+     * 为什么内部使用是 BIO 不用 NIO？
+     *
+     * 因为 ZK 比较特殊，集群节点个数，并不是越多越好。而且一般来说，ZK集群的个数都很少。个位数(15个以内)服务器之间两两通信，其实这个并发并不高，所以很实用BIO通信
+     * 但是对外提供服务的服务程序就不一样，需要支持高并发! 使用NIO,当然也支持netty
+     * 假设你看到的源码版本是 3.5.x 其实这个 NIO 的通信模式也被更改, 进一步提高了并发
+     * Reactor : 一层 : selector ServerCnxn
+     * Reactor : 二层 : selector acceptor worker
+     * selector 监听是否有链接请求
+     * acceptor 就是负责处理链接请求的
+     * worker   负责执行具体IO操作的
+     *
+     * @param self
+     * @param zk
+     * @throws IOException
+     */
     Leader(QuorumPeer self,LeaderZooKeeperServer zk) throws IOException {
         this.self = self;
         this.proposalStats = new ProposalStats();

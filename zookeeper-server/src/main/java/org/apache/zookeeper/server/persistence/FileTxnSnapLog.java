@@ -53,7 +53,15 @@ public class FileTxnSnapLog {
     //the directory containing the
     //the snapshot directory
     private final File snapDir;
+    /**
+     *  FileTxnSnapLog 负责数据的处理
+     *  TxnLog： 负责日志相关（写请求处理过程中，负责记录操作日志）
+     *  SnapShot： 磁盘数据文件 和 内存数据 之间的相互转化
+     */
     private TxnLog txnLog;
+    /**
+     * 快照
+     */
     private SnapShot snapLog;
     public final static int VERSION = 2;
     public final static String version = "version-";
@@ -172,7 +180,19 @@ public class FileTxnSnapLog {
      */
     public long restore(DataTree dt, Map<Long, Integer> sessions, 
             PlayBackListener listener) throws IOException {
+        /**
+         * 注释: 第一个操作:先把已经持久化到磁盘的快照数据反序列化到内存中。假设现在有100条数据:
+         * 从快照中，可能恢复的就是: 1-97
+         * 所以此时，我们拿到的lastProdessZxid = 97
+         * Snaplog snapLogl
+         */
         snapLog.deserialize(dt, sessions);
+        /**
+         * 注释 第二个操作:从 ComittedLogs 去加载数据。
+         * 在最后一次快照之后，也有一些新的事务被提交了，这些事务的日志记录在日志文件。
+         * 冷启动，也需要加载这个数据，最后:返回这些日志中的，maxZXID
+         *
+         */
         return fastForwardFromEdits(dt, sessions, listener);
     }
 
@@ -190,7 +210,12 @@ public class FileTxnSnapLog {
     public long fastForwardFromEdits(DataTree dt, Map<Long, Integer> sessions,
                                      PlayBackListener listener) throws IOException {
         FileTxnLog txnLog = new FileTxnLog(dataDir);
-        TxnIterator itr = txnLog.read(dt.lastProcessedZxid+1);
+
+        // TODO_ MA注释: 加载 comitted logs 的时候，从第一个有效的txn开始
+        // TODO_ MA注释: txn以前的数据，都被持久化到磁盘快照文件中了。已经在上一步加载过了
+        TxnIterator itr = txnLog.read(dt.lastProcessedZxid + 1);
+
+        // TODO_ MA注释: 上一步加载快照数据文件的时候，得到了快照数据中的最大的有效 ZXID 了。
         long highestZxid = dt.lastProcessedZxid;
         TxnHeader hdr;
         try {
@@ -210,6 +235,7 @@ public class FileTxnSnapLog {
                     highestZxid = hdr.getZxid();
                 }
                 try {
+                    // 真正的操作
                     processTransaction(hdr,dt,sessions, itr.getTxn());
                 } catch(KeeperException.NoNodeException e) {
                    throw new IOException("Failed to process transaction type: " +
@@ -240,8 +266,7 @@ public class FileTxnSnapLog {
         ProcessTxnResult rc;
         switch (hdr.getType()) {
         case OpCode.createSession:
-            sessions.put(hdr.getClientId(),
-                    ((CreateSessionTxn) txn).getTimeOut());
+            sessions.put(hdr.getClientId(), ((CreateSessionTxn) txn).getTimeOut());
             if (LOG.isTraceEnabled()) {
                 ZooTrace.logTraceMessage(LOG,ZooTrace.SESSION_TRACE_MASK,
                         "playLog --- create session in log: 0x"
@@ -262,6 +287,11 @@ public class FileTxnSnapLog {
             rc = dt.processTxn(hdr, txn);
             break;
         default:
+            /**
+             * 注释:处理一个事务操作，事实上就是从comitted logs 恹复数据到内存DataTree 中
+             * 1、hdr事务头
+             * 2、txn事务体
+             */
             rc = dt.processTxn(hdr, txn);
         }
 
@@ -287,6 +317,7 @@ public class FileTxnSnapLog {
     }
 
     /**
+     * 把内存数据保存到磁盘
      * save the datatree and the sessions into a snapshot
      * @param dataTree the datatree to be serialized onto disk
      * @param sessionsWithTimeouts the sesssion timeouts to be
@@ -300,6 +331,7 @@ public class FileTxnSnapLog {
         File snapshotFile = new File(snapDir, Util.makeSnapshotName(lastZxid));
         LOG.info("Snapshotting: 0x{} to {}", Long.toHexString(lastZxid),
                 snapshotFile);
+        // 把内存数据序列化存储到磁盘
         snapLog.serialize(dataTree, sessionsWithTimeouts, snapshotFile);
         
     }

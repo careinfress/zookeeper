@@ -72,10 +72,12 @@ public class FileSnap implements SnapShot {
         // we run through 100 snapshots (not all of them)
         // if we cannot get it running within 100 snapshots
         // we should  give up
+        // 那最近的 100 个快照
         List<File> snapList = findNValidSnapshots(100);
         if (snapList.size() == 0) {
             return -1L;
         }
+
         File snap = null;
         boolean foundValid = false;
         for (int i = 0; i < snapList.size(); i++) {
@@ -86,7 +88,9 @@ public class FileSnap implements SnapShot {
                 LOG.info("Reading snapshot " + snap);
                 snapIS = new BufferedInputStream(new FileInputStream(snap));
                 crcIn = new CheckedInputStream(snapIS, new Adler32());
+                // 就是负责进行基本类型属性数据的反序列化
                 InputArchive ia = BinaryInputArchive.getArchive(crcIn);
+                // 将 ia 反序列化回来，构建到 dt
                 deserialize(dt,sessions, ia);
                 long checkSum = crcIn.getChecksum().getValue();
                 long val = ia.readLong("val");
@@ -120,13 +124,16 @@ public class FileSnap implements SnapShot {
      */
     public void deserialize(DataTree dt, Map<Long, Integer> sessions,
             InputArchive ia) throws IOException {
+        // 先读取文件头
         FileHeader header = new FileHeader();
         header.deserialize(ia, "fileheader");
+        // 校验头部文件
         if (header.getMagic() != SNAP_MAGIC) {
             throw new IOException("mismatching magic headers "
                     + header.getMagic() + 
                     " !=  " + FileSnap.SNAP_MAGIC);
         }
+        // 工具方法
         SerializeUtils.deserializeSnapshot(dt,ia,sessions);
     }
 

@@ -80,15 +80,19 @@ public class NIOServerCnxnFactory extends ServerCnxnFactory implements Runnable 
     @Override
     public void configure(InetSocketAddress addr, int maxcc) throws IOException {
         configureSaslLogin();
-
+        // 启动一个 NIO 服务端
+        // ZooKeeperThread 就是一个线程
         thread = new ZooKeeperThread(this, "NIOServerCxn.Factory:" + addr);
         thread.setDaemon(true);
         maxClientCnxns = maxcc;
+        // 服务端初始化过程
         this.ss = ServerSocketChannel.open();
         ss.socket().setReuseAddress(true);
         LOG.info("binding to port " + addr);
         ss.socket().bind(addr);
+        // 非阻塞模式
         ss.configureBlocking(false);
+        // 监听 ACCEPT 时间
         ss.register(selector, SelectionKey.OP_ACCEPT);
     }
 
@@ -197,21 +201,28 @@ public class NIOServerCnxnFactory extends ServerCnxnFactory implements Runnable 
         }
     }
 
+    /**
+     * reactor
+     * 基本 NIO 的编写（非常简单）
+     */
     public void run() {
         while (!ss.socket().isClosed()) {
             try {
+                // 最长阻塞 1s
                 selector.select(1000);
                 Set<SelectionKey> selected;
                 synchronized (this) {
+                    // 感兴趣的事件就绪
                     selected = selector.selectedKeys();
                 }
-                ArrayList<SelectionKey> selectedList = new ArrayList<SelectionKey>(
-                        selected);
+                ArrayList<SelectionKey> selectedList = new ArrayList<SelectionKey>(selected);
+                // 随机下
                 Collections.shuffle(selectedList);
+
                 for (SelectionKey k : selectedList) {
+                    // 处理连接事件
                     if ((k.readyOps() & SelectionKey.OP_ACCEPT) != 0) {
-                        SocketChannel sc = ((ServerSocketChannel) k
-                                .channel()).accept();
+                        SocketChannel sc = ((ServerSocketChannel) k.channel()).accept();
                         InetAddress ia = sc.socket().getInetAddress();
                         int cnxncount = getClientCnxnCount(ia);
                         if (maxClientCnxns > 0 && cnxncount >= maxClientCnxns){
@@ -228,16 +239,22 @@ public class NIOServerCnxnFactory extends ServerCnxnFactory implements Runnable 
                             sk.attach(cnxn);
                             addCnxn(cnxn);
                         }
-                    } else if ((k.readyOps() & (SelectionKey.OP_READ | SelectionKey.OP_WRITE)) != 0) {
+                    }
+                    // 处理 READ WRITE
+                    else if ((k.readyOps() & (SelectionKey.OP_READ | SelectionKey.OP_WRITE)) != 0) {
                         NIOServerCnxn c = (NIOServerCnxn) k.attachment();
+                        // 真正开始读取数据
                         c.doIO(k);
-                    } else {
+                    }
+                    //
+                    else {
                         if (LOG.isDebugEnabled()) {
                             LOG.debug("Unexpected ops in select "
                                       + k.readyOps());
                         }
                     }
                 }
+                // 清空
                 selected.clear();
             } catch (RuntimeException e) {
                 LOG.warn("Ignoring unexpected runtime exception", e);

@@ -328,11 +328,11 @@ public class QuorumCnxManager {
         try {
             // Sending id and challenge
             dout = new DataOutputStream(sock.getOutputStream());
+            // 建立连接后立马把我 sid 给写过去
             dout.writeLong(this.mySid);
             dout.flush();
 
-            din = new DataInputStream(
-                    new BufferedInputStream(sock.getInputStream()));
+            din = new DataInputStream(new BufferedInputStream(sock.getInputStream()));
         } catch (IOException e) {
             LOG.warn("Ignoring exception reading or writing challenge: ", e);
             closeSocket(sock);
@@ -380,9 +380,9 @@ public class QuorumCnxManager {
     public void receiveConnection(final Socket sock) {
         DataInputStream din = null;
         try {
-            din = new DataInputStream(
-                    new BufferedInputStream(sock.getInputStream()));
-
+            // 读取客户单发送过来的信息
+            din = new DataInputStream(new BufferedInputStream(sock.getInputStream()));
+            // 针对信息进行处理
             handleConnection(sock, din);
         } catch (IOException e) {
             LOG.error("Exception handling connection, addr: {}, closing server connection",
@@ -423,12 +423,12 @@ public class QuorumCnxManager {
         }
     }
 
-    private void handleConnection(Socket sock, DataInputStream din)
-            throws IOException {
+    private void handleConnection(Socket sock, DataInputStream din) throws IOException {
         Long sid = null;
         try {
             // Read server id
             sid = din.readLong();
+            // 错误的 丢包
             if (sid < 0) { // this is not a server id but a protocol version (see ZOOKEEPER-1633)
                 sid = din.readLong();
 
@@ -448,6 +448,7 @@ public class QuorumCnxManager {
                     LOG.error("Read only " + num_read + " bytes out of " + num_remaining_bytes + " sent by server " + sid);
                 }
             }
+            // observer
             if (sid == QuorumPeer.OBSERVER_ID) {
                 /*
                  * Choose identifier at random. We need a value to identify
@@ -466,7 +467,9 @@ public class QuorumCnxManager {
         LOG.debug("Authenticating learner server.id: {}", sid);
         authServer.authenticate(sock, din);
 
-        //If wins the challenge, then close the new connection.
+        // If wins the challenge, then close the new connection.
+        // 如果赢得挑战，则关闭新连接
+        // 如果对方的 sid 比我小，关闭连接
         if (sid < this.mySid) {
             /*
              * This replica might still believe that the connection to sid is
@@ -478,15 +481,15 @@ public class QuorumCnxManager {
                 sw.finish();
             }
 
-            /*
-             * Now we start a new connection
-             */
             LOG.debug("Create new connection to server: " + sid);
             closeSocket(sock);
+            // 也就是说如果对方的 sid 比较小，那么我是老大，我要主观的把连接断开
+            // 然后我自己作为客户端跟你建立连接
             connectOne(sid);
-
-            // Otherwise start worker threads to receive data.
-        } else {
+        }
+        // 对方的 sid 比我大
+        // Otherwise start worker threads to receive data.
+        else {
             SendWorker sw = new SendWorker(sock, sid);
             RecvWorker rw = new RecvWorker(sock, din, sid, sw);
             sw.setRecv(rw);
@@ -515,12 +518,15 @@ public class QuorumCnxManager {
          * If sending message to myself, then simply enqueue it (loopback).
          */
         if (this.mySid == sid) {
+             // 自己投自己
              b.position(0);
+             // 放到 RecvQueue
              addToRecvQueue(new Message(b.duplicate(), sid));
-            /*
-             * Otherwise send to the corresponding thread to send.
-             */
-        } else {
+        }
+        /*
+         * Otherwise send to the corresponding thread to send.
+         */
+        else {
              /*
               * Start a new connection if doesn't have one already.
               */
@@ -531,18 +537,18 @@ public class QuorumCnxManager {
              } else {
                  addToSendQueue(bq, b);
              }
+             // 发起连接
              connectOne(sid);
-                
         }
     }
     
     /**
      * Try to establish a connection to server with id sid.
-     * 
+     *
      *  @param sid  server id
      */
     synchronized public void connectOne(long sid){
-        if (!connectedToPeer(sid)){
+        if (!connectedToPeer(sid)) {
             InetSocketAddress electionAddr;
             if (view.containsKey(sid)) {
                 electionAddr = view.get(sid).electionAddr;
@@ -550,9 +556,11 @@ public class QuorumCnxManager {
                 LOG.warn("Invalid server id: " + sid);
                 return;
             }
+
             try {
 
                 LOG.debug("Opening channel to server " + sid);
+                // BIO socket
                 Socket sock = new Socket();
                 setSockOpts(sock);
                 sock.connect(view.get(sid).electionAddr, cnxTO);
@@ -567,7 +575,9 @@ public class QuorumCnxManager {
                 } else {
                     initiateConnection(sock, sid);
                 }
-            } catch (UnresolvedAddressException e) {
+            }
+
+            catch (UnresolvedAddressException e) {
                 // Sun doesn't include the address that causes this
                 // exception to be thrown, also UAE cannot be wrapped cleanly
                 // so we log the exception in order to capture this critical
@@ -721,6 +731,7 @@ public class QuorumCnxManager {
         public void run() {
             int numRetries = 0;
             InetSocketAddress addr;
+            // 开启一个阻塞的服务端
             while((!shutdown) && (numRetries < 3)){
                 try {
                     ss = new ServerSocket();
@@ -738,6 +749,7 @@ public class QuorumCnxManager {
                             .electionAddr.toString());
                     ss.bind(addr);
                     while (!shutdown) {
+                        // 阻塞
                         Socket client = ss.accept();
                         setSockOpts(client);
                         LOG.info("Received connection request "
@@ -923,17 +935,17 @@ public class QuorumCnxManager {
 
                     ByteBuffer b = null;
                     try {
-                        ArrayBlockingQueue<ByteBuffer> bq = queueSendMap
-                                .get(sid);
+                        ArrayBlockingQueue<ByteBuffer> bq = queueSendMap.get(sid);
                         if (bq != null) {
                             b = pollSendQueue(bq, 1000, TimeUnit.MILLISECONDS);
-                        } else {
-                            LOG.error("No queue of incoming messages for " +
-                                      "server " + sid);
+                        }
+
+                        else {
+                            LOG.error("No queue of incoming messages for " + "server " + sid);
                             break;
                         }
 
-                        if(b != null){
+                        if (b != null) {
                             lastMessageSent.put(sid, b);
                             send(b);
                         }

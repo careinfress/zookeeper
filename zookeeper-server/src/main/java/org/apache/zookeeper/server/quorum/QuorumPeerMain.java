@@ -35,6 +35,11 @@ import org.apache.zookeeper.server.persistence.FileTxnSnapLog;
 import org.apache.zookeeper.server.quorum.QuorumPeerConfig.ConfigException;
 
 /**
+ * 1、服务端: QuorumPeer ===>启动了ServerCnxnFactory, 启动了NIO服务端， 监听了2181端口===> 接收到客户端的一个链接请求， 则生成- - 个ServerCnxn
+ * 2、客户端: Zookeeper ===> 启动和初始化了一个ClientCnxn 对线，发送ConnectRequest 给服务端
+ */
+
+/**
  *
  * <h2>Configuration file</h2>
  *
@@ -66,16 +71,35 @@ import org.apache.zookeeper.server.quorum.QuorumPeerConfig.ConfigException;
 public class QuorumPeerMain {
     private static final Logger LOG = LoggerFactory.getLogger(QuorumPeerMain.class);
 
-    private static final String USAGE = "Usage: QuorumPeerMain configfile";
+    private static final String USAGE = "Usage: QuorumPeerMain config file";
 
     protected QuorumPeer quorumPeer;
 
     /**
+     * 根据启动脚本分析得知：这个 args = zoo.cfg 的路径
+     *
      * To start the replicated server specify the configuration file name on
      * the command line.
-     * @param args path to the configfile
+     * @param args path to the config file
      */
     public static void main(String[] args) {
+
+        /**
+         * zookeeper 启动的大致流程：
+         *
+         * 1. 解析配置
+         * 2. 启动定时任务
+         * 3. 启动开始监听端口（NIO）
+         * 4. 抽象生成一个 zookeeper 节点，然后把解析出来的各种参数给配置上，然后启动
+         *
+         *  QuorumPeer 就是所谓的一台服务器的抽象
+         *      -- 冷数据恢复
+         *      -- connect start
+         *      -- startLeaderElection 为选举做准备
+         *      -- QuorumPeer Thread run
+         *                  -- 执行选举
+         */
+
         QuorumPeerMain main = new QuorumPeerMain();
         try {
             main.initializeAndRun(args);
@@ -96,9 +120,8 @@ public class QuorumPeerMain {
         System.exit(0);
     }
 
-    protected void initializeAndRun(String[] args)
-        throws ConfigException, IOException
-    {
+    protected void initializeAndRun(String[] args) throws ConfigException, IOException {
+        // 解析 zoo.cfg 配置文件内容
         QuorumPeerConfig config = new QuorumPeerConfig();
         if (args.length == 1) {
             config.parse(args[0]);
@@ -108,11 +131,16 @@ public class QuorumPeerMain {
         DatadirCleanupManager purgeMgr = new DatadirCleanupManager(config
                 .getDataDir(), config.getDataLogDir(), config
                 .getSnapRetainCount(), config.getPurgeInterval());
+        // 启动清理文件的线程 DatadirCleanupManager 用来定期清理多余的快照文件
+        // 每次清理，最少会依然保存 3 个最近的快照。
+        // ZK 的数据会不断的从该内存快照到磁盘，快照文件越来越多
         purgeMgr.start();
 
         if (args.length == 1 && config.servers.size() > 0) {
+            // 集群模式
             runFromConfig(config);
         } else {
+            // 单机模式
             LOG.warn("Either no config or no quorum defined in config, running "
                     + " in standalone mode");
             // there is only server in the quorum -- run as standalone
@@ -129,12 +157,21 @@ public class QuorumPeerMain {
   
       LOG.info("Starting quorum peer");
       try {
-          ServerCnxnFactory cnxnFactory = ServerCnxnFactory.createFactory();
+          /**
+           *
+           * 注释: 这个 configure 方法最重要的事情就是初始化: thread 对象
+           * ServerCnxnFactory 工厂对象中，有一个实例对象非常重要: thread
+           * cnxnFactory 这个实例对象有一个 thread 成员属性，这个成员属性是一个线程，他的目标对象，就是 cnxnFactory
+           * 其实这个thread 的start 就是执行cnxnFactory 的run( )
+           * cnxnFactory的启动在: quorumPeer.start();中实现。 cnxnFactory 是 quorumPeer 的成员变量
+           * config. getClientPortAddress() = 2181
+           */
+          ServerCnxnFactory cnxnFactory = ServerCnxnFactory.createFactory(); // cnxnFactory = NIOServerCnxnFactory
           cnxnFactory.configure(config.getClientPortAddress(),
-                                config.getMaxClientCnxns());
-
+                                config.getMaxClientCnxns()); // 配置的单个客户端允许的最大连接数
+          // 初始化
           quorumPeer = getQuorumPeer();
-
+          // 下面的各种 setXXX 其实就是把 QuorumPeerConfig 中的各种参数设置到 QuorumPeer
           quorumPeer.setQuorumPeers(config.getServers());
           quorumPeer.setTxnFactory(new FileTxnSnapLog(
                   new File(config.getDataLogDir()),
@@ -156,7 +193,7 @@ public class QuorumPeerMain {
 
           // sets quorum sasl authentication configurations
           quorumPeer.setQuorumSaslEnabled(config.quorumEnableSasl);
-          if(quorumPeer.isQuorumSaslAuthEnabled()){
+          if (quorumPeer.isQuorumSaslAuthEnabled()) {
               quorumPeer.setQuorumServerSaslRequired(config.quorumServerRequireSasl);
               quorumPeer.setQuorumLearnerSaslRequired(config.quorumLearnerRequireSasl);
               quorumPeer.setQuorumServicePrincipal(config.quorumServicePrincipal);
@@ -167,6 +204,14 @@ public class QuorumPeerMain {
           quorumPeer.setQuorumCnxnThreadsSize(config.quorumCnxnThreadsSize);
           quorumPeer.initialize();
 
+          /**
+           * 注释:启动一个zk节点
+           * 该 start() 方法中，会做三件重要的事情，之后再跳转到 quorumPeer 的run() 方法
+           * 1、loadDataBase();
+           * 2、cnxnFactory.start( );
+           * 3、startLeaderElection();
+           * 请注意:这个方法的调用完毕之后，会跳转到 QuorumPeer 的run()方法
+           */
           quorumPeer.start();
           quorumPeer.join();
       } catch (InterruptedException e) {

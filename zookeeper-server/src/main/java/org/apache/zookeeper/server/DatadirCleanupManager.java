@@ -104,8 +104,9 @@ public class DatadirCleanupManager {
 
         timer = new Timer("PurgeTask", true);
         TimerTask task = new PurgeTask(dataLogDir, snapDir, snapRetainCount);
+        // 每隔多少个小时执行一次
         timer.scheduleAtFixedRate(task, 0, TimeUnit.HOURS.toMillis(purgeInterval));
-
+        // 更改状态
         purgeTaskStatus = PurgeTaskStatus.STARTED;
     }
 

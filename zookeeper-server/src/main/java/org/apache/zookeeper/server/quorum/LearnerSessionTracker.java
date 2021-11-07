@@ -32,7 +32,7 @@ import org.apache.zookeeper.server.ZooKeeperServerListener;
  */
 public class LearnerSessionTracker implements SessionTracker {
 
-    HashMap<Long, Integer> touchTable = new HashMap<Long, Integer>();
+    HashMap<Long, Integer> touchTable = new HashMap<Long/* sessionId*/, Integer/* sessionTimeout*/>();
     long serverId = 1;
     long nextSessionId=0;
     

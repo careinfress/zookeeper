@@ -695,10 +695,18 @@ public class DataTree {
 
     }
 
+    /**
+     * 当前 ZK 节点他的 zkdatabase 数据库中最大的事务 ID
+     * 选举能成为 leader 有 3 个条件：
+     * 1. epoch：逻辑时钟，选举轮次
+     * 2. zxid：如果 epoch 一样，zxid 谁大就成为 leader
+     * 3. serverid
+     *
+     * 我们在 zk 服务启动的时候，一定会做一件事情，获取 zxid
+     */
     public volatile long lastProcessedZxid = 0;
 
-    public ProcessTxnResult processTxn(TxnHeader header, Record txn)
-    {
+    public ProcessTxnResult processTxn(TxnHeader header, Record txn) {
         ProcessTxnResult rc = new ProcessTxnResult();
 
         try {
@@ -1066,6 +1074,19 @@ public class DataTree {
         }
     }
 
+    /**
+     * // TODO_ MA注释: 从快照数据中，进入replay恹复DataTree
+     * // TODO_ MA注释: InputArchive 扫描 快照文件，恢复datanode 节点到datatree 并且还帮忙构建字典树
+     * // TODO_ MA注释: 进入到这个方法的时候，就意味着，已经开始正常从快照文件中，读取tree 了
+     * // TODO_ MA注释: 读取tree的方式:
+     * // TODO_ MA注释: 先读取一个path 然后读取这个path对应的node
+     * // TODO_ MA注释: 然后重复这个过程
+     * // TODO_ MA注释: 其实，你序列化 DataTree 到快照文件
+     *
+     * @param ia
+     * @param tag
+     * @throws IOException
+     */
     public void deserialize(InputArchive ia, String tag) throws IOException {
         aclCache.deserialize(ia);
         nodes.clear();

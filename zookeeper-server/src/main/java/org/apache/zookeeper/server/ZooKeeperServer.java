@@ -412,7 +412,9 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
         if (sessionTracker == null) {
             createSessionTracker();
         }
+        // Session 管理
         startSessionTracker();
+        // 初始化所有的 Processors
         setupRequestProcessors();
 
         registerJMX();
@@ -423,8 +425,7 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
 
     protected void setupRequestProcessors() {
         RequestProcessor finalProcessor = new FinalRequestProcessor(this);
-        RequestProcessor syncProcessor = new SyncRequestProcessor(this,
-                finalProcessor);
+        RequestProcessor syncProcessor = new SyncRequestProcessor(this, finalProcessor);
         ((SyncRequestProcessor)syncProcessor).start();
         firstProcessor = new PrepRequestProcessor(this, syncProcessor);
         ((PrepRequestProcessor)firstProcessor).start();
@@ -615,6 +616,12 @@ public class ZooKeeperServer implements SessionExpirer, ServerStats.Provider {
     }
 
     long createSession(ServerCnxn cnxn, byte passwd[], int timeout) {
+        // 所有跟 Session 有关的都是 sessionTracker 来管理
+        /**
+         * TODO_ MA注释:创建Session
+         * TODO_ MA注释:如果此时客户端链接上的服务端在leader的内部，则该sessionTracker = sessionTrackerImpl
+         * TODO_ MA注释:如果此时客户端链接上的服务端在follower的内部，则该sessionTracker = LearnerSessionTracker
+         */
         long sessionId = sessionTracker.createSession(timeout);
         Random r = new Random(sessionId ^ superSecret);
         r.nextBytes(passwd);

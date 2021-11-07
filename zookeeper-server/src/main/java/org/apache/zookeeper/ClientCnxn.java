@@ -85,6 +85,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
+ *
+ * 客户端网络连接
  * This class manages the socket i/o for the client. ClientCnxn maintains a list
  * of available servers to connect to and "transparently" switches servers it is
  * connected to as needed.
@@ -418,6 +420,11 @@ public class ClientCnxn {
         disableAutoWatchReset = b;
     }
     public void start() {
+        /**
+         * 注释:初始化两个重要的线程
+         * 1、SendThread  用于发送请求
+         * 2、EventThread 用于处理请求事件
+         */
         sendThread.start();
         eventThread.start();
     }

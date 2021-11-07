@@ -140,7 +140,7 @@ public class QuorumPeerConfig {
                 throw new IllegalArgumentException(configFile.toString()
                         + " file is missing");
             }
-
+            // Properties 格式
             Properties cfg = new Properties();
             FileInputStream in = new FileInputStream(configFile);
             try {
@@ -148,7 +148,8 @@ public class QuorumPeerConfig {
             } finally {
                 in.close();
             }
-
+            // 解析配置
+            // 再解析 myid （sid == myid == serverid）
             parseProperties(cfg);
         } catch (IOException e) {
             throw new ConfigException("Error processing " + path, e);
@@ -190,11 +191,11 @@ public class QuorumPeerConfig {
                 initLimit = Integer.parseInt(value);
             } else if (key.equals("syncLimit")) {
                 syncLimit = Integer.parseInt(value);
-            } else if (key.equals("electionAlg")) {
+            } else if (key.equals("electionAlg")) { // 默认为 3 FastElection
                 electionAlg = Integer.parseInt(value);
             } else if (key.equals("quorumListenOnAllIPs")) {
                 quorumListenOnAllIPs = Boolean.parseBoolean(value);
-            } else if (key.equals("peerType")) {
+            } else if (key.equals("peerType")) { // 要么是 observer 要么是 participant
                 if (value.toLowerCase().equals("observer")) {
                     peerType = LearnerType.OBSERVER;
                 } else if (value.toLowerCase().equals("participant")) {
@@ -206,10 +207,13 @@ public class QuorumPeerConfig {
             } else if (key.equals( "syncEnabled" )) {
                 syncEnabled = Boolean.parseBoolean(value);
             } else if (key.equals("autopurge.snapRetainCount")) {
+                // 最少保留 3 个快照
                 snapRetainCount = Integer.parseInt(value);
             } else if (key.equals("autopurge.purgeInterval")) {
+                // 时间周期
                 purgeInterval = Integer.parseInt(value);
             } else if (key.startsWith("server.")) {
+                // myid
                 int dot = key.indexOf('.');
                 long sid = Long.parseLong(key.substring(dot + 1));
                 String parts[] = splitWithLeadingHostname(value);
@@ -219,12 +223,16 @@ public class QuorumPeerConfig {
                        " or host:port:port:type");
                 }
                 LearnerType type = null;
+                // 主机名
                 String hostname = parts[0];
+                // 端口
                 Integer port = Integer.parseInt(parts[1]);
                 Integer electionPort = null;
-                if (parts.length > 2){
-                	electionPort=Integer.parseInt(parts[2]);
+                if (parts.length > 2) {
+                    // 选举端口
+                	electionPort = Integer.parseInt(parts[2]);
                 }
+                // 角色类型
                 if (parts.length > 3){
                     if (parts[3].toLowerCase().equals("observer")) {
                         type = LearnerType.OBSERVER;
@@ -396,13 +404,16 @@ public class QuorumPeerConfig {
                  */
 
                 LOG.info("Defaulting to majority quorums");
+                // servers.size() 为具有选举权的机器个数
                 quorumVerifier = new QuorumMaj(servers.size());
             }
 
             // Now add observers to servers, once the quorums have been
             // figured out
             servers.putAll(observers);
-
+            /**
+             * 读取 myid
+             */
             File myIdFile = new File(dataDir, "myid");
             if (!myIdFile.exists()) {
                 throw new IllegalArgumentException(myIdFile.toString()

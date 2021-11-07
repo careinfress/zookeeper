@@ -43,10 +43,19 @@ import org.apache.zookeeper.common.Time;
 public class SessionTrackerImpl extends ZooKeeperCriticalThread implements SessionTracker {
     private static final Logger LOG = LoggerFactory.getLogger(SessionTrackerImpl.class);
 
+    /**
+     * SessionID和Session 一一对应
+     */
     HashMap<Long, SessionImpl> sessionsById = new HashMap<Long, SessionImpl>();
 
+    /**
+     * expireTime和SessionSet 一一对应
+     */
     HashMap<Long, SessionSet> sessionSets = new HashMap<Long, SessionSet>();
 
+    /**
+     * 存储每个Session 的过期时间
+     */
     ConcurrentHashMap<Long, Integer> sessionsWithTimeout;
     long nextSessionId = 0;
     long nextExpirationTime;
@@ -88,7 +97,25 @@ public class SessionTrackerImpl extends ZooKeeperCriticalThread implements Sessi
 
     private long roundToInterval(long time) {
         // We give a one interval grace period
+        // expirationInterval = tickTime = 2000ms 2s
         return (time / expirationInterval + 1) * expirationInterval;
+
+        /**
+         * 注释:这个规则给你举个例子:
+         * 1、假设time为3.9s :则方法返回结果为: 4
+         * 1、假设time为4.0s :则方法返回结果为: 6
+         * 2、假设time为5.7s :则方法返回结果为: 6
+         * 3、假设time为6.0s :则方法返回结果为: 6
+         * 3、假设time为6.1s :则方法返回结果为: 8
+         *
+         * 0-2s 内===> 2
+         * 2-4s 内===> 4
+         * 4-6s 内===> 6
+         * 6-8s 内===> 8
+         * 假设有某一个会话已经超时了，但是，0.1也有一个会话超时，那么有必要一定要一个一个的处理么?
+         * 其实可以一起处理, 提高效率
+         * 所有会话超时处于 6-8s 内的会话，就会变成一个集合，然后使用这个8作为key 这个集合作为value
+         */
     }
 
     public SessionTrackerImpl(SessionExpirer expirer,
@@ -163,27 +190,39 @@ public class SessionTrackerImpl extends ZooKeeperCriticalThread implements Sessi
         LOG.info("SessionTrackerImpl exited loop!");
     }
 
+    /**
+     * 注释: touch 摸一下， 如果一个客户端在sessionTimeout 时间范围内期间, 没有做任何动作，就超时了。
+     * 如果超时了必然就被销毁了。
+     * touch一下，其实就是更新一下最近一次的活动时间!
+     * @param sessionId
+     * @param timeout
+     * @return
+     */
     synchronized public boolean touchSession(long sessionId, int timeout) {
         if (LOG.isTraceEnabled()) {
-            ZooTrace.logTraceMessage(LOG,
-                                     ZooTrace.CLIENT_PING_TRACE_MASK,
+            ZooTrace.logTraceMessage(LOG, ZooTrace.CLIENT_PING_TRACE_MASK,
                                      "SessionTrackerImpl --- Touch session: 0x"
                     + Long.toHexString(sessionId) + " with timeout " + timeout);
         }
+
         SessionImpl s = sessionsById.get(sessionId);
         // Return false, if the session doesn't exists or marked as closing
         if (s == null || s.isClosing()) {
             return false;
         }
+        // 归桶
         long expireTime = roundToInterval(Time.currentElapsedTime() + timeout);
         if (s.tickTime >= expireTime) {
             // Nothing needs to be done
             return true;
         }
+
+        // 分桶管理
         SessionSet set = sessionSets.get(s.tickTime);
         if (set != null) {
             set.sessions.remove(s);
         }
+
         s.tickTime = expireTime;
         set = sessionSets.get(s.tickTime);
         if (set == null) {
@@ -239,8 +278,11 @@ public class SessionTrackerImpl extends ZooKeeperCriticalThread implements Sessi
     }
 
     synchronized public void addSession(long id, int sessionTimeout) {
+
         sessionsWithTimeout.put(id, sessionTimeout);
+
         if (sessionsById.get(id) == null) {
+            // 创建 Session 对象
             SessionImpl s = new SessionImpl(id, sessionTimeout, 0);
             sessionsById.put(id, s);
             if (LOG.isTraceEnabled()) {
@@ -255,6 +297,7 @@ public class SessionTrackerImpl extends ZooKeeperCriticalThread implements Sessi
                         + Long.toHexString(id) + " " + sessionTimeout);
             }
         }
+        // 更新 Session 超时时间
         touchSession(id, sessionTimeout);
     }
 

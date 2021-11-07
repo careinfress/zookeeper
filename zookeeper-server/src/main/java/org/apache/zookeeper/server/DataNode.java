@@ -39,7 +39,10 @@ import org.apache.zookeeper.data.StatPersisted;
  */
 @SuppressFBWarnings("EI_EXPOSE_REP2")
 public class DataNode implements Record {
-    /** the parent of this datanode */
+    /**
+     * the parent of this datanode
+     * 父节点信息
+     */
     DataNode parent;
 
     /** the data for this datanode */
